@@ -1,0 +1,21 @@
+import pandas as pd, io, sys, psycopg2
+def load(conn, schema_sql, view_sql, P="data/processed/"):
+    cur=conn.cursor(); cur.execute(open(schema_sql).read())
+    def copy(table, df):
+        df=df.astype(object).where(df.notna(),None)
+        buf=io.StringIO(); df.to_csv(buf,index=False,header=False,na_rep="\\N"); buf.seek(0)
+        cur.copy_expert(f"COPY {table}({','.join(df.columns)}) FROM STDIN WITH (FORMAT csv, NULL '\\N')",buf)
+    cust=pd.read_csv(P+"customers_clean.csv").rename(columns={"customer_zip_code_prefix":"zip_prefix","customer_city":"city","customer_state":"state"})
+    copy("customers",cust[["customer_id","customer_unique_id","zip_prefix","city","state"]])
+    s=pd.read_csv(P+"sellers_clean.csv").rename(columns={"seller_zip_code_prefix":"zip_prefix","seller_city":"city","seller_state":"state"})
+    copy("sellers",s)
+    p=pd.read_csv(P+"products_clean.csv").rename(columns={"product_category_name":"category_pt","product_name_length":"name_length","product_description_length":"description_length","product_photos_qty":"photos_qty","product_weight_g":"weight_g","product_length_cm":"length_cm","product_height_cm":"height_cm","product_width_cm":"width_cm"})
+    for c in ["name_length","description_length","photos_qty"]: p[c]=p[c].astype("Int64")
+    copy("products",p[["product_id","category_pt","category","name_length","description_length","photos_qty","weight_g","length_cm","height_cm","width_cm"]])
+    o=pd.read_csv(P+"orders_clean.csv")
+    o["late_flag"]=o["late_flag"].astype("Int64")
+    copy("orders",o[["order_id","customer_id","order_status","order_purchase_timestamp","order_approved_at","order_delivered_carrier_date","order_delivered_customer_date","order_estimated_delivery_date","order_month","is_delivered","delivery_days","delay_days","late_flag"]])
+    copy("order_items",pd.read_csv(P+"order_items_clean.csv"))
+    copy("reviews",pd.read_csv(P+"reviews_clean.csv")[["order_id","review_id","review_score","review_comment_title","review_comment_message","review_creation_date","review_answer_timestamp"]])
+    copy("payments",pd.read_csv(P+"payments_clean.csv"))
+    cur.execute(open(view_sql).read()); conn.commit()

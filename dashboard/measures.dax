@@ -1,0 +1,55 @@
+-- Olist Power BI measures
+-- Base grain: orders = one row per delivered order.
+
+Total Revenue = SUM(orders[revenue])
+
+Orders = COUNTROWS(orders)
+
+AOV = DIVIDE([Total Revenue], [Orders])
+
+Late % = AVERAGE(orders[late_flag])
+
+Late Orders = SUM(orders[late_flag])
+
+Avg Review = AVERAGE(orders[review_score])
+
+Median Delivery Days = MEDIAN(orders[delivery_days])
+
+Item Revenue = SUM(order_items[price])
+
+Customers = DISTINCTCOUNT(orders[customer_unique_id])
+
+Repeat Customers =
+VAR CustomerOrders =
+    ADDCOLUMNS(
+        VALUES(orders[customer_unique_id]),
+        "__OrderCount", CALCULATE([Orders])
+    )
+RETURN
+    COUNTROWS(FILTER(CustomerOrders, [__OrderCount] > 1))
+
+Repeat Rate = DIVIDE([Repeat Customers], [Customers])
+
+Top-10% Customer Revenue Share =
+VAR CustomerSpend =
+    ADDCOLUMNS(
+        VALUES(orders[customer_unique_id]),
+        "__Spend", CALCULATE([Total Revenue])
+    )
+VAR TopCustomers =
+    TOPN(
+        ROUNDUP([Customers] * 0.10, 0),
+        CustomerSpend,
+        [__Spend], DESC
+    )
+RETURN
+    DIVIDE(SUMX(TopCustomers, [__Spend]), [Total Revenue])
+
+Returning Order Share =
+DIVIDE(
+    CALCULATE(
+        [Orders],
+        orders[customer_type_first] = "Returning"
+    ),
+    [Orders]
+)
